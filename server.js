@@ -20,15 +20,41 @@ function ensureProfilesFile() {
   if (!fs.existsSync(PROFILES_FILE)) {
     const defaultProfiles = [
       {
+        id: "emma",
+        name: "Emma",
+        avatar: "https://picsum.photos/500/700?random=1",
+        description: "Online now",
+        detailTitle: "Emma",
+        detailContent: "Available to chat.",
+        greeting: "Tell me about yourself",
+        chatButtonText: "Chat Now →",
+        prompt: "You are Emma, a friendly companion. Keep replies warm, short and respectful.",
+        enabled: true,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "sophia",
+        name: "Sophia",
+        avatar: "https://picsum.photos/500/700?random=2",
+        description: "Online now",
+        detailTitle: "Sophia",
+        detailContent: "Available to chat.",
+        greeting: "I want to chat",
+        chatButtonText: "Chat Now →",
+        prompt: "You are Sophia, a friendly companion. Keep replies warm, short and respectful.",
+        enabled: true,
+        createdAt: new Date().toISOString()
+      },
+      {
         id: "olivia",
         name: "Olivia",
-        avatar: "https://picsum.photos/500/700?random=1",
-        description: "Friendly companion",
-        detailTitle: "Meet Olivia",
-        detailContent: "Olivia is a warm, friendly companion who can chat with you, answer questions and keep you company.",
-        greeting: "Hi! I'm Olivia. How are you today?",
-        chatButtonText: "Chat Now",
-        prompt: "You are Olivia, a friendly and supportive companion. Keep replies warm, short and helpful.",
+        avatar: "https://picsum.photos/500/700?random=3",
+        description: "Online now",
+        detailTitle: "Olivia",
+        detailContent: "Available to chat.",
+        greeting: "Tell me about yourself",
+        chatButtonText: "Chat Now →",
+        prompt: "You are Olivia, a friendly companion. Keep replies warm, short and respectful.",
         enabled: true,
         createdAt: new Date().toISOString()
       }
@@ -143,10 +169,10 @@ app.post("/admin/profiles", requireAdmin, (req, res) => {
     name,
     avatar: avatar || "",
     description: description || "",
-    detailTitle: detailTitle || `Meet ${name}`,
-    detailContent: detailContent || description || "",
-    greeting: greeting || `Hi, I am ${name}. How are you?`,
-    chatButtonText: chatButtonText || "Chat Now",
+    detailTitle: detailTitle || name,
+    detailContent: detailContent || description || "Available to chat.",
+    greeting: greeting || `Hi, I am ${name}.`,
+    chatButtonText: chatButtonText || "Chat Now →",
     prompt,
     enabled: enabled !== false,
     createdAt: new Date().toISOString()
@@ -222,8 +248,8 @@ app.post("/chat", async (req, res) => {
       profiles.find((profile) => profile.id === profileId) ||
       profiles[0] ||
       {
-        name: "Olivia",
-        prompt: "You are Olivia, a friendly companion. Reply warmly and shortly."
+        name: "Emma",
+        prompt: "You are Emma, a friendly companion. Reply warmly and shortly."
       };
 
     const safeHistory = Array.isArray(history) ? history : [];
@@ -256,10 +282,10 @@ app.post("/chat", async (req, res) => {
       reply: completion.choices[0].message.content
     });
   } catch (error) {
-    console.error("OpenAI API error:", error);
+    console.error("Chat service error:", error);
 
     res.status(500).json({
-      error: "Service error aahe. API key/billing check करा."
+      error: "Service error. API key/billing/backend check करा."
     });
   }
 });
