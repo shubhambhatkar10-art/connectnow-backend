@@ -1,0 +1,17 @@
+{
+  "name": "connectnow-backend",
+  "version": "1.0.0",
+  "description": "ConnectNow GPT AI backend",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "openai": "^4.77.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
