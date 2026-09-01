@@ -1,115 +1,271 @@
-import express from "express";
-import OpenAI from "openai";
+const express = require("express");
+const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
+const OpenAI = require("openai");
 
 const app = express();
 
-const port = process.env.PORT || 3000;
+app.use(cors());
+app.use(express.json({ limit: "10mb" }));
 
-const allowedOrigins = [
-  "https://loanlyway.com",
-  "https://www.loanlyway.com"
-];
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-app.use(express.json({ limit: "1mb" }));
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const PROFILES_FILE = path.join(__dirname, "profiles.json");
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
+function ensureProfilesFile() {
+  if (!fs.existsSync(PROFILES_FILE)) {
+    const defaultProfiles = [
+      {
+        id: "olivia",
+        name: "Olivia",
+        avatar: "https://picsum.photos/500/700?random=1",
+        description: "Friendly companion",
+        detailTitle: "Meet Olivia",
+        detailContent: "Olivia is a warm, friendly companion who can chat with you, answer questions and keep you company.",
+        greeting: "Hi! I'm Olivia. How are you today?",
+        chatButtonText: "Chat Now",
+        prompt: "You are Olivia, a friendly and supportive companion. Keep replies warm, short and helpful.",
+        enabled: true,
+        createdAt: new Date().toISOString()
+      }
+    ];
 
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+    fs.writeFileSync(PROFILES_FILE, JSON.stringify(defaultProfiles, null, 2));
   }
+}
 
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+function readProfiles() {
+  try {
+    ensureProfilesFile();
+    const data = fs.readFileSync(PROFILES_FILE, "utf8");
+    return JSON.parse(data || "[]");
+  } catch (error) {
+    console.error("Read profiles error:", error);
+    return [];
+  }
+}
 
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+function writeProfiles(profiles) {
+  try {
+    fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2));
+  } catch (error) {
+    console.error("Write profiles error:", error);
+  }
+}
+
+function createId(name) {
+  const base = String(name || "profile")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return base + "-" + Date.now();
+}
+
+function requireAdmin(req, res, next) {
+  const adminPassword = req.headers["x-admin-password"];
+
+  if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+    return res.status(401).json({
+      error: "Unauthorized. Admin password चुकीचा आहे."
+    });
   }
 
   next();
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "missing-key"
-});
+}
 
 app.get("/", (req, res) => {
   res.json({
-    ok: true,
+    status: "ok",
     message: "Backend running"
   });
 });
 
-app.get("/api/test", (req, res) => {
+app.get("/profiles", (req, res) => {
+  const profiles = readProfiles().filter((profile) => profile.enabled !== false);
+
   res.json({
-    ok: true,
-    message: "Backend running",
-    hasApiKey: Boolean(process.env.OPENAI_API_KEY)
+    profiles
   });
 });
 
-app.post("/api/chat", async (req, res) => {
+app.get("/profiles/:id", (req, res) => {
+  const { id } = req.params;
+  const profiles = readProfiles().filter((profile) => profile.enabled !== false);
+  const profile = profiles.find((item) => item.id === id);
+
+  if (!profile) {
+    return res.status(404).json({
+      error: "Profile not found"
+    });
+  }
+
+  res.json({
+    profile
+  });
+});
+
+app.get("/admin/profiles", requireAdmin, (req, res) => {
+  const profiles = readProfiles();
+
+  res.json({
+    profiles
+  });
+});
+
+app.post("/admin/profiles", requireAdmin, (req, res) => {
+  const {
+    name,
+    avatar,
+    description,
+    detailTitle,
+    detailContent,
+    greeting,
+    chatButtonText,
+    prompt,
+    enabled
+  } = req.body;
+
+  if (!name || !prompt) {
+    return res.status(400).json({
+      error: "Name आणि Prompt required आहेत."
+    });
+  }
+
+  const profiles = readProfiles();
+
+  const newProfile = {
+    id: createId(name),
+    name,
+    avatar: avatar || "",
+    description: description || "",
+    detailTitle: detailTitle || `Meet ${name}`,
+    detailContent: detailContent || description || "",
+    greeting: greeting || `Hi, I am ${name}. How are you?`,
+    chatButtonText: chatButtonText || "Chat Now",
+    prompt,
+    enabled: enabled !== false,
+    createdAt: new Date().toISOString()
+  };
+
+  profiles.push(newProfile);
+  writeProfiles(profiles);
+
+  res.json({
+    success: true,
+    profile: newProfile
+  });
+});
+
+app.put("/admin/profiles/:id", requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const profiles = readProfiles();
+
+  const index = profiles.findIndex((profile) => profile.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({
+      error: "Profile not found"
+    });
+  }
+
+  const updatedProfile = {
+    ...profiles[index],
+    ...req.body,
+    id,
+    updatedAt: new Date().toISOString()
+  };
+
+  profiles[index] = updatedProfile;
+  writeProfiles(profiles);
+
+  res.json({
+    success: true,
+    profile: updatedProfile
+  });
+});
+
+app.delete("/admin/profiles/:id", requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const profiles = readProfiles();
+
+  const filteredProfiles = profiles.filter((profile) => profile.id !== id);
+
+  writeProfiles(filteredProfiles);
+
+  res.json({
+    success: true
+  });
+});
+
+app.post("/chat", async (req, res) => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({
-        reply: "API key missing aahe."
-      });
-    }
+    const {
+      message,
+      history = [],
+      profileId
+    } = req.body;
 
-    const { message, profileName, history } = req.body;
-
-    if (!message || typeof message !== "string") {
+    if (!message) {
       return res.status(400).json({
-        reply: "Please type a valid message."
+        error: "Message required"
       });
     }
 
-    const safeProfileName = String(profileName || "AI Companion").slice(0, 60);
+    const profiles = readProfiles().filter((profile) => profile.enabled !== false);
 
-    const safeHistory = Array.isArray(history)
-      ? history.slice(-10).map((item) => ({
-          role: item.role === "assistant" ? "assistant" : "user",
-          content: String(item.content || "").slice(0, 500)
-        }))
-      : [];
+    const selectedProfile =
+      profiles.find((profile) => profile.id === profileId) ||
+      profiles[0] ||
+      {
+        name: "Olivia",
+        prompt: "You are Olivia, a friendly companion. Reply warmly and shortly."
+      };
+
+    const safeHistory = Array.isArray(history) ? history : [];
+
+    const formattedHistory = safeHistory
+      .slice(-10)
+      .filter((item) => item.role && item.content)
+      .map((item) => ({
+        role: item.role === "assistant" ? "assistant" : "user",
+        content: String(item.content).slice(0, 1500)
+      }));
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      max_tokens: 220,
       messages: [
         {
           role: "system",
-          content: `
-You are ${safeProfileName}, a friendly AI companion in a website chat widget.
-Always say you are AI, not a real person.
-Keep replies short and friendly.
-Do not ask private data.
-Reply in user's language when possible.
-          `
+          content: selectedProfile.prompt
         },
-        ...safeHistory,
+        ...formattedHistory,
         {
           role: "user",
-          content: message.slice(0, 1000)
+          content: message
         }
-      ],
-      temperature: 0.8,
-      max_tokens: 220
+      ]
     });
 
-    const reply =
-      completion.choices?.[0]?.message?.content ||
-      "Sorry, reply generate zala nahi.";
-
-    return res.json({ reply });
+    res.json({
+      reply: completion.choices[0].message.content
+    });
   } catch (error) {
-    console.error(error);
+    console.error("OpenAI API error:", error);
 
-    return res.status(500).json({
-      reply: "OpenAI API error aahe. API key/billing check करा."
+    res.status(500).json({
+      error: "Service error aahe. API key/billing check करा."
     });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
