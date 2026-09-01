@@ -1,7 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
 const OpenAI = require("openai");
 
 const app = express();
@@ -9,79 +7,50 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+
+let profiles = [
+  {
+    id: "emma",
+    name: "Emma",
+    avatar: "https://picsum.photos/500/700?random=1",
+    description: "Online now",
+    detailTitle: "Emma",
+    detailContent: "Available to chat.",
+    greeting: "Tell me about yourself",
+    chatButtonText: "Chat Now →",
+    prompt: "You are Emma, a friendly companion. Keep replies warm, short and respectful.",
+    enabled: true
+  },
+  {
+    id: "sophia",
+    name: "Sophia",
+    avatar: "https://picsum.photos/500/700?random=2",
+    description: "Online now",
+    detailTitle: "Sophia",
+    detailContent: "Available to chat.",
+    greeting: "I want to chat",
+    chatButtonText: "Chat Now →",
+    prompt: "You are Sophia, a friendly companion. Keep replies warm, short and respectful.",
+    enabled: true
+  },
+  {
+    id: "olivia",
+    name: "Olivia",
+    avatar: "https://picsum.photos/500/700?random=3",
+    description: "Online now",
+    detailTitle: "Olivia",
+    detailContent: "Available to chat.",
+    greeting: "Tell me about yourself",
+    chatButtonText: "Chat Now →",
+    prompt: "You are Olivia, a friendly companion. Keep replies warm, short and respectful.",
+    enabled: true
+  }
+];
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
-const PROFILES_FILE = path.join(__dirname, "profiles.json");
-
-function ensureProfilesFile() {
-  if (!fs.existsSync(PROFILES_FILE)) {
-    const defaultProfiles = [
-      {
-        id: "emma",
-        name: "Emma",
-        avatar: "https://picsum.photos/500/700?random=1",
-        description: "Online now",
-        detailTitle: "Emma",
-        detailContent: "Available to chat.",
-        greeting: "Tell me about yourself",
-        chatButtonText: "Chat Now →",
-        prompt: "You are Emma, a friendly companion. Keep replies warm, short and respectful.",
-        enabled: true,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "sophia",
-        name: "Sophia",
-        avatar: "https://picsum.photos/500/700?random=2",
-        description: "Online now",
-        detailTitle: "Sophia",
-        detailContent: "Available to chat.",
-        greeting: "I want to chat",
-        chatButtonText: "Chat Now →",
-        prompt: "You are Sophia, a friendly companion. Keep replies warm, short and respectful.",
-        enabled: true,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "olivia",
-        name: "Olivia",
-        avatar: "https://picsum.photos/500/700?random=3",
-        description: "Online now",
-        detailTitle: "Olivia",
-        detailContent: "Available to chat.",
-        greeting: "Tell me about yourself",
-        chatButtonText: "Chat Now →",
-        prompt: "You are Olivia, a friendly companion. Keep replies warm, short and respectful.",
-        enabled: true,
-        createdAt: new Date().toISOString()
-      }
-    ];
-
-    fs.writeFileSync(PROFILES_FILE, JSON.stringify(defaultProfiles, null, 2));
-  }
-}
-
-function readProfiles() {
-  try {
-    ensureProfilesFile();
-    const data = fs.readFileSync(PROFILES_FILE, "utf8");
-    return JSON.parse(data || "[]");
-  } catch (error) {
-    console.error("Read profiles error:", error);
-    return [];
-  }
-}
-
-function writeProfiles(profiles) {
-  try {
-    fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2));
-  } catch (error) {
-    console.error("Write profiles error:", error);
-  }
-}
 
 function createId(name) {
   const base = String(name || "profile")
@@ -105,24 +74,34 @@ function requireAdmin(req, res, next) {
 }
 
 app.get("/", (req, res) => {
-  res.json({
+  res.status(200).json({
     status: "ok",
-    message: "Backend running"
+    message: "Backend running",
+    routes: ["/health", "/profiles", "/profiles/:id", "/chat"]
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: "Health check ok"
   });
 });
 
 app.get("/profiles", (req, res) => {
-  const profiles = readProfiles().filter((profile) => profile.enabled !== false);
+  const enabledProfiles = profiles.filter((profile) => profile.enabled !== false);
 
   res.json({
-    profiles
+    profiles: enabledProfiles
   });
 });
 
 app.get("/profiles/:id", (req, res) => {
   const { id } = req.params;
-  const profiles = readProfiles().filter((profile) => profile.enabled !== false);
-  const profile = profiles.find((item) => item.id === id);
+
+  const profile = profiles.find(
+    (item) => item.id === id && item.enabled !== false
+  );
 
   if (!profile) {
     return res.status(404).json({
@@ -136,8 +115,6 @@ app.get("/profiles/:id", (req, res) => {
 });
 
 app.get("/admin/profiles", requireAdmin, (req, res) => {
-  const profiles = readProfiles();
-
   res.json({
     profiles
   });
@@ -162,24 +139,20 @@ app.post("/admin/profiles", requireAdmin, (req, res) => {
     });
   }
 
-  const profiles = readProfiles();
-
   const newProfile = {
     id: createId(name),
     name,
     avatar: avatar || "",
-    description: description || "",
+    description: description || "Online now",
     detailTitle: detailTitle || name,
-    detailContent: detailContent || description || "Available to chat.",
+    detailContent: detailContent || "Available to chat.",
     greeting: greeting || `Hi, I am ${name}.`,
     chatButtonText: chatButtonText || "Chat Now →",
     prompt,
-    enabled: enabled !== false,
-    createdAt: new Date().toISOString()
+    enabled: enabled !== false
   };
 
   profiles.push(newProfile);
-  writeProfiles(profiles);
 
   res.json({
     success: true,
@@ -189,7 +162,6 @@ app.post("/admin/profiles", requireAdmin, (req, res) => {
 
 app.put("/admin/profiles/:id", requireAdmin, (req, res) => {
   const { id } = req.params;
-  const profiles = readProfiles();
 
   const index = profiles.findIndex((profile) => profile.id === id);
 
@@ -199,29 +171,22 @@ app.put("/admin/profiles/:id", requireAdmin, (req, res) => {
     });
   }
 
-  const updatedProfile = {
+  profiles[index] = {
     ...profiles[index],
     ...req.body,
-    id,
-    updatedAt: new Date().toISOString()
+    id
   };
-
-  profiles[index] = updatedProfile;
-  writeProfiles(profiles);
 
   res.json({
     success: true,
-    profile: updatedProfile
+    profile: profiles[index]
   });
 });
 
 app.delete("/admin/profiles/:id", requireAdmin, (req, res) => {
   const { id } = req.params;
-  const profiles = readProfiles();
 
-  const filteredProfiles = profiles.filter((profile) => profile.id !== id);
-
-  writeProfiles(filteredProfiles);
+  profiles = profiles.filter((profile) => profile.id !== id);
 
   res.json({
     success: true
@@ -230,11 +195,7 @@ app.delete("/admin/profiles/:id", requireAdmin, (req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
-    const {
-      message,
-      history = [],
-      profileId
-    } = req.body;
+    const { message, history = [], profileId } = req.body;
 
     if (!message) {
       return res.status(400).json({
@@ -242,15 +203,15 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    const profiles = readProfiles().filter((profile) => profile.enabled !== false);
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({
+        error: "OPENAI_API_KEY missing in Render Environment"
+      });
+    }
 
     const selectedProfile =
-      profiles.find((profile) => profile.id === profileId) ||
-      profiles[0] ||
-      {
-        name: "Emma",
-        prompt: "You are Emma, a friendly companion. Reply warmly and shortly."
-      };
+      profiles.find((profile) => profile.id === profileId && profile.enabled !== false) ||
+      profiles[0];
 
     const safeHistory = Array.isArray(history) ? history : [];
 
@@ -273,7 +234,7 @@ app.post("/chat", async (req, res) => {
         ...formattedHistory,
         {
           role: "user",
-          content: message
+          content: String(message).slice(0, 2000)
         }
       ]
     });
@@ -285,13 +246,21 @@ app.post("/chat", async (req, res) => {
     console.error("Chat service error:", error);
 
     res.status(500).json({
-      error: "Service error. API key/billing/backend check करा."
+      error: error.message || "Service error"
     });
   }
+});
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Route not found",
+    path: req.path,
+    availableRoutes: ["/", "/health", "/profiles", "/profiles/:id", "/chat"]
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port " + PORT);
 });
